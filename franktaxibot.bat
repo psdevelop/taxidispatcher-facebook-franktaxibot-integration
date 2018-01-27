@@ -1,0 +1,1 @@
+C:\Users\Public\Documents\PRFILES\nodejs\node.exe C:\Users\Public\Documents\PRFILES\nodejs\td_app\franktaxibot.js TIMEOUT /T 10 /NOBREAK 
