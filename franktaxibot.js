@@ -21,14 +21,14 @@ var connection_test = new sql.ConnectionPool(config, function (err) {
     if (err) {
         console.log(err.message);
         console.log(err.code);
-    } else {
-        var request = new sql.Request(connection_test);
-        request.query('select COUNT(*) as number FROM Voditelj WHERE V_rabote=1',
-            function (err, recordset) {
-                console.log(recordset.recordset);
-            });
+        return;
     }
-    console.log('End test db-connection.');
+
+    var request = new sql.Request(connection_test);
+    request.query('select COUNT(*) as number FROM Voditelj WHERE V_rabote=1',
+        function (err, recordset) {
+            console.log(recordset.recordset);
+        });
 
 });
 
@@ -37,7 +37,7 @@ request({
     url: 'https://api.sandbox.franktaxibot.com/auth/v1/verify',
     method: 'GET',
     headers: {
-        Authorization: 'Bearer '
+        Authorization: 'Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiIsImp0aSI6ImYwNjc2NmQ5YzlhYzliZTVhYzYyNThiYTJmOWRjNzcxZDQxMDRjYzlhYmE5Y2VjMzBlODgxOTQ4Mjc3MzIxZDkxNjJiZGM0N2JjYTYxZDJiIn0.eyJhdWQiOiJmMWFiMzk1Mzk4ODU3Y2Y2MjE2YSIsImp0aSI6ImYwNjc2NmQ5YzlhYzliZTVhYzYyNThiYTJmOWRjNzcxZDQxMDRjYzlhYmE5Y2VjMzBlODgxOTQ4Mjc3MzIxZDkxNjJiZGM0N2JjYTYxZDJiIiwiaWF0IjoxNTE2MDIwNTYyLCJuYmYiOjE1MTYwMjA1NjIsImV4cCI6NDY3MTY5NDE2Miwic3ViIjoiMjQiLCJzY29wZXMiOltdfQ.F78V_W9Yag4-_i_JzcEqZB9I-vimKBgjj9GBpw1IBy4'
     }
 }, function (err, res, body) {
     if (err) {
