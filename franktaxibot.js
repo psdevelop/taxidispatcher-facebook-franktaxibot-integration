@@ -32,36 +32,83 @@ var connection_test = new sql.ConnectionPool(config, function (err) {
 
 });
 
+function sendAPIRequest(params, success) {
+    console.log('===============0');
+    request(Object.assign(
+        {
+            method: 'GET',
+            headers: {
+                Authorization: 'Bearer '
+            }
+        }, params
+    ), function (err, res, body) {
+        if (err) {
+            console.log(err);
+        } else {
+            var jsonRes;
+            console.log('===============1');
+            if (!body) {
+                console.log('No body!');
+                return;
+            }
+
+            try {
+                jsonRes = JSON.parse(body);
+                //jsonRes && console.log(jsonRes);
+                //jsonRes.included && console.log(jsonRes.included);
+                if (success) {
+                    success(jsonRes);
+                }
+            } catch (e) {
+                console.log('Error of parsing json: ' + body + '\n' + JSON.stringify(params) + e);
+                return;
+            }
+        }
+    });
+}
+
 console.log('auth request');
-request({
-    url: 'https://api.sandbox.franktaxibot.com/auth/v1/verify',
-    method: 'GET',
-    headers: {
-        Authorization: 'Bearer '
-    }
-}, function (err, res, body) {
-    if (err) {
-        console.log(err);
-    } else {
-        var jsonRes;
+sendAPIRequest(
+    {
+        url: 'https://api.sandbox.franktaxibot.com/auth/v1/verify'
+    });
 
-        if (!body) {
-            return;
-        }
+sendAPIRequest(
+    {
+        url: 'https://api.sandbox.franktaxibot.com/webhooks/v1',
+    }, parseExistWebhooks);
 
-        try {
-            jsonRes = JSON.parse(body);
-            jsonRes.data && console.log(jsonRes.data);
-            jsonRes.included && console.log(jsonRes.included);
-        } catch (e) {
-            console.log(body);
-            return;
-        }
-    }
-});
+function parseExistWebhooks(hooksData) {
+    var hooks = hooksData && hooksData.data;
+
+    console.log('web hooks data: ' + JSON.stringify(hooks));
+    hooks && hooks.length && hooks.length > 1 && hooks.forEach(function(hook, index, array) {
+        console.log('delete hook id=' + hook.id + '===' + hook);
+        //deleteWebHook(hook.id);
+    });
+
+    (!hooks || hooks.length > 1) && sendAPIRequest(
+        {
+            url: 'https://api.sandbox.franktaxibot.com/webhooks/v1',
+            method: 'POST',
+            body: JSON.stringify({
+                'request-url': 'http://psdevelop.ru/franktaxibot/',
+                'request-method': 'GET'
+            })
+        });
+    return;
+}
+
+function deleteWebHook(id) {
+    sendAPIRequest(
+        {
+            url: 'https://api.sandbox.franktaxibot.com/webhooks/v1/' + id,
+            method: 'DELETE'
+        });
+}
 
 function checkBot() {
-    console.log('[' + new Date().toUTCString() + ']');
+    //console.log('[' + new Date().toUTCString() + ']');
     return false;
 }
 
