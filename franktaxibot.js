@@ -1,9 +1,12 @@
 ﻿//TODO Для развертывания веб-сервера
 //var http = require('http'),
 // encoding = require("encoding"),
-// express = require('express'),
-// app = module.exports.app = express();
-var request = require('request'),
+
+var WEB_HOOK_REQUEST_URL = 'http://188.243.240.125:8087/',
+    request = require('request'),
+    express = require('express'),
+    bodyParser = require('body-parser'),
+    app = module.exports.app = express(),
     sql = require('mssql'),
     config = {
         user: 'app_server',
@@ -15,7 +18,24 @@ var request = require('request'),
         }
     };
 
-console.log('Integration server TaxiDispatcher with franktaxibot start...');
+// parse application/x-www-form-urlencoded
+app.use(bodyParser.urlencoded({extended: false}))
+
+// parse application/json
+app.use(bodyParser.json())
+
+//web hook request callback
+app.all('/', function (req, res) {
+    console.log('hook called' + JSON.stringify(req.body));
+    //for (i in req) {
+    //    console.log(i);
+    //}
+    res.send('hello world');
+});
+
+app.listen(8087);
+
+console.log('Integration server TaxiDispatcher with franktaxibot start, port 8087...');
 console.log('Start test db-connection...' + sql);
 var connection_test = new sql.ConnectionPool(config, function (err) {
     if (err) {
@@ -33,34 +53,30 @@ var connection_test = new sql.ConnectionPool(config, function (err) {
 });
 
 function sendAPIRequest(params, success) {
-    console.log('===============0');
     request(Object.assign(
         {
             method: 'GET',
             headers: {
-                Authorization: 'Bearer '
+                Authorization: 'Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiIsImp0aSI6ImYwNjc2NmQ5YzlhYzliZTVhYzYyNThiYTJmOWRjNzcxZDQxMDRjYzlhYmE5Y2VjMzBlODgxOTQ4Mjc3MzIxZDkxNjJiZGM0N2JjYTYxZDJiIn0.eyJhdWQiOiJmMWFiMzk1Mzk4ODU3Y2Y2MjE2YSIsImp0aSI6ImYwNjc2NmQ5YzlhYzliZTVhYzYyNThiYTJmOWRjNzcxZDQxMDRjYzlhYmE5Y2VjMzBlODgxOTQ4Mjc3MzIxZDkxNjJiZGM0N2JjYTYxZDJiIiwiaWF0IjoxNTE2MDIwNTYyLCJuYmYiOjE1MTYwMjA1NjIsImV4cCI6NDY3MTY5NDE2Miwic3ViIjoiMjQiLCJzY29wZXMiOltdfQ.F78V_W9Yag4-_i_JzcEqZB9I-vimKBgjj9GBpw1IBy4'
             }
         }, params
     ), function (err, res, body) {
         if (err) {
             console.log(err);
         } else {
-            var jsonRes;
-            console.log('===============1');
             if (!body) {
                 console.log('No body!');
                 return;
             }
 
             try {
-                jsonRes = JSON.parse(body);
-                //jsonRes && console.log(jsonRes);
-                //jsonRes.included && console.log(jsonRes.included);
+                var jsonRes = JSON.parse(body);
                 if (success) {
                     success(jsonRes);
                 }
             } catch (e) {
-                console.log('Error of parsing json: ' + body + '\n' + JSON.stringify(params) + e);
+                console.log('Error of parsing json: ' +
+                    body + '\n' + JSON.stringify(params) + e);
                 return;
             }
         }
@@ -79,20 +95,31 @@ sendAPIRequest(
     }, parseExistWebhooks);
 
 function parseExistWebhooks(hooksData) {
-    var hooks = hooksData && hooksData.data;
+    var hooks = hooksData && hooksData.data,
+        isBadHook = true,
+        hookAttributes;
 
     console.log('web hooks data: ' + JSON.stringify(hooks));
-    hooks && hooks.length && hooks.length > 1 && hooks.forEach(function(hook, index, array) {
-        console.log('delete hook id=' + hook.id + '===' + hook);
-        //deleteWebHook(hook.id);
-    });
+    if (hooks && hooks.length) {
+        isBadHook = hooks.length > 1;
+        hooks.forEach(function (hook, index, array) {
+            hookAttributes = hook.attributes;
+            isBadHook |= hookAttributes &&
+                hookAttributes['request-url'] !== WEB_HOOK_REQUEST_URL;
 
-    (!hooks || hooks.length > 1) && sendAPIRequest(
+            if (isBadHook) {
+                console.log('delete hook, id=' + hook.id);
+                deleteWebHook(hook.id);
+            }
+        });
+    }
+
+    isBadHook && sendAPIRequest(
         {
             url: 'https://api.sandbox.franktaxibot.com/webhooks/v1',
             method: 'POST',
             body: JSON.stringify({
-                'request-url': 'http://psdevelop.ru/franktaxibot/',
+                'request-url': WEB_HOOK_REQUEST_URL,
                 'request-method': 'GET'
             })
         });
