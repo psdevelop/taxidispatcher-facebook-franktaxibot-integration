@@ -21,7 +21,16 @@ var WEB_HOOK_REQUEST_URL = 'http://188.243.240.125:8087/',
 		options: {
 			encrypt: false // Use this if you're on Windows Azure
 		}
-	}, connection;
+	}, connection,
+	baseLat = 59.9289443, baseLon = 30.2758098, radius = 2.0;
+
+function getDistance(x1, y1, x2, y2) {
+	return Math.sqrt(
+		Math.pow(x1 - x2, 2)
+		+
+		Math.pow(y1 - y2, 2)
+	);
+}
 
 // parse application/x-www-form-urlencoded
 app.use(bodyParser.urlencoded({extended: false}))
@@ -34,28 +43,131 @@ app.all('/', function (req, res) {
 	var body = req && req.body,
 		meta = body && body.meta,
 		hookType = meta && meta.name,
-		hookUUID = meta && meta.uuid;
+		hookUUID = meta && meta.uuid,
+		orderData = body && body.data,
+		orderId = orderData && orderData.id,
+		orderAttrs = orderData && orderData.attributes,
+		ordersRels = orderData && orderData.relationships,
+		ordersReceipt = ordersRels && orderData.receipt,
+		ordersCustomer = ordersRels && orderData.customer,
+		customerData = ordersCustomer && ordersCustomer.data,
+		orderIncluded = body && body.included,
+		//'wait_for_accept'
+		orderState = getOrderAttr('state') || '',
+		passengers = getOrderAttr('passengers'),
+		luggage = getOrderAttr('luggage'),
+		distance = parseInt(getOrderAttr('travel-distance') || '0', 10),
+		phoneNumber = getOrderAttr('phone-number'),
+		fromCountry = getOrderAttr('location-from-country'),
+		fromCity = getOrderAttr('location-from-city'),
+		fromZip = getOrderAttr('location-from-zip'),
+		fromAddress = getOrderAttr('location-from-address'),
+		fromLat = getOrderAttr('location-from-latitude'),
+		fromLon = getOrderAttr('location-from-longitude'),
+		fromIsAirport = !!getOrderAttr('location-from-is-airport'),
+		toCountry = getOrderAttr('location-to-country'),
+		toCity = getOrderAttr('location-to-city'),
+		toZip = getOrderAttr('location-to-zip'),
+		toAddress = getOrderAttr('location-to-address'),
+		toLat = getOrderAttr('location-to-latitude'),
+		toLon = getOrderAttr('location-to-longitude'),
+		toIsAirport = !!getOrderAttr('location-to-is-airport'),
+		fromPrice = getOrderAttr('price-from'),
+		toPrice = getOrderAttr('price-to'),
+		fromCurrency = getOrderAttr('currency-from'),
+		toCurrency = getOrderAttr('currency-to'),
+		finalFare = getOrderAttr('final-fare'),
+		priceSurge = getOrderAttr('price-surge'),
+		airportTerminal = getOrderAttr('airport-terminal'),
+		airArrOrDep = getOrderAttr('airport-arrival-or-departure'),
+		airportExitDoor = getOrderAttr('airport-exit-door'),
+		optCabType = getOrderAttr('option-cab-type'),
+		optChildSeat = getOrderAttr('option-children-seat'),
+		optPetsAviable = getOrderAttr('option-pets-aviable'),
+		optDriverType = getOrderAttr('option-driver-type'),
+		paymentType = getOrderAttr('payment-type'), //cash
+		customerCharged = !!getOrderAttr('customer-charged'),
+		orderType = getOrderAttr('order-type'), // 'standard'
+		priceLevel = getOrderAttr('price-level'), // economy
+		baseFare = getOrderAttr('base-fare'),
+		pricePerKm = getOrderAttr('price-per-km'),
+		pricePerMin = getOrderAttr('price-per-min'),
+		createdAt = getOrderAttr('created-at'),
+		completedAt = getOrderAttr('completed-at'),
+		partnerRideId = getOrderAttr('partner-ride-id'),
+		driverId = getOrderAttr('driver-id'),
+		driverName = getOrderAttr('driver-name'),
+		driverPhone = getOrderAttr('driver-phone'),
+		carPlate = getOrderAttr('car-plate'),
+		carModel = getOrderAttr('car-model'),
+		carLat = getOrderAttr('car-latitude'),
+		carLon = getOrderAttr('car-longitude'),
+		pickupIn = getOrderAttr('pickup-in'),
+		pickedUp = getOrderAttr('picked-up'),
+		pickedUpAt = getOrderAttr('picked-up-at'),
+		acceptedAt = getOrderAttr('accepted-at'),
+		priceLevel = getOrderAttr('price-level'),
+		priceLevel = getOrderAttr('price-level'),
+		calcDistanceFrom = fromLat && fromLon &&
+			getDistance(fromLat, fromLon, baseLat, baseLon),
+		calcDistanceFromText = calcDistanceFrom || 'не определено',
+		calcDistanceTo = toLat && toLon &&
+			getDistance(toLat, toLon, baseLat, baseLon),
+		calcDistanceToText = calcDistanceTo || 'не определено';
 
-	console.log('hook called' + JSON.stringify(req.body));
+	function getOrderAttr(key) {
+		return orderAttrs && orderAttrs[key];
+	}
+
+	console.log('hook called, orderLocFromZip=' + fromZip +
+		',orderLocFromCity=' + fromCity +
+		',orderPhoneNumber=' + phoneNumber +
+		',orderId=' + orderId +
+		',calcDistanceFrom=' + calcDistanceFromText +
+		',calcDistanceTo=' + calcDistanceToText);
 	if (!hookType) {
 		logAndResponse(ERR_MISS_HOOK_TYPE);
 		return;
 	}
-	//for (i in req) {
-	//    console.log(i);
-	//}
-	//
-	if (hookType === HOOK_TYPE_ORDER_CREATED) {
-		queryRequest('EXEC	[dbo].[InsertOrderWithParamsRClientFBot] @adres = N\'' + data.stadr + '\', @enadres = N\'' + enadr_val + '\',@phone = N\'' + data.phone + '\',' +
-			'@disp_id = -1, @status = 0, @color_check = 0, @op_order = 0, @gsm_detect_code = 0,' +
-			'@deny_duplicate = 0, @colored_new = 0, @ab_num = N\'\', @client_id = ' + data.id + ', @ord_num = 0,@order_id = 0',
-			function (recordset) {
-				//console.log(recordset.recordset);
-				logAndResponse(SUCC_ORDER_ADD);
-			},
-			function (err) {
-				console.log(recordset.recordset);
-			});
+
+	if (hookType === HOOK_TYPE_ORDER_CREATED && orderId &&
+		calcDistanceFrom && calcDistanceFrom < radius) {
+
+		addOrderSQL = 'EXEC	[dbo].[InsertOrderWithParamsRClientFBot] @adres = N\'' +
+			'start' + '\', @enadres = N\'' + 'end' + '\',@phone = N\'' +
+			phoneNumber + '\',' + '@disp_id = -1, @status = 0, @color_check = 0,' +
+			' @op_order = 0, @gsm_detect_code = 0, @deny_duplicate = 0,' +
+			' @colored_new = 0, @ab_num = N\'\', @client_id = ' + 1 +
+			', @ord_num = 0,@order_id = 0';
+
+		function acquireCallback(acqBody) {
+			var acqData = acqBody && acqBody.data,
+				acqType = acqData && acqData.type || '',
+				acqId = acqData && acqData.id || '';
+			if (acqType === 'ride' && acqId === orderId) {
+				queryRequest(addOrderSQL,
+					function (recordset) {
+						logAndResponse(SUCC_ORDER_ADD);
+					},
+					function (err) {
+						console.log(err);
+					});
+			} else {
+				logAndResponse('Bad acq response!');
+			}
+		}
+
+		console.log('SEND ACQUIRE POST REQUEST');
+		console.log('https://api.sandbox.franktaxibot.com/marketplace/v1/rides/' +
+			orderId + '/acquire');
+		sendAPIRequest(
+			{
+				url: 'https://api.sandbox.franktaxibot.com/marketplace/v1/rides/' +
+				orderId + '/acquire',
+				method: 'POST'
+			}, acquireCallback);
+
+
 	} else {
 		logAndResponse(ERR_MISS_UNKNOWN_TYPE);
 	}
@@ -103,7 +215,7 @@ function sendAPIRequest(params, success) {
 		{
 			method: 'GET',
 			headers: {
-				Authorization: 'Bearer '
+				Authorization: 'Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiIsImp0aSI6ImYwNjc2NmQ5YzlhYzliZTVhYzYyNThiYTJmOWRjNzcxZDQxMDRjYzlhYmE5Y2VjMzBlODgxOTQ4Mjc3MzIxZDkxNjJiZGM0N2JjYTYxZDJiIn0.eyJhdWQiOiJmMWFiMzk1Mzk4ODU3Y2Y2MjE2YSIsImp0aSI6ImYwNjc2NmQ5YzlhYzliZTVhYzYyNThiYTJmOWRjNzcxZDQxMDRjYzlhYmE5Y2VjMzBlODgxOTQ4Mjc3MzIxZDkxNjJiZGM0N2JjYTYxZDJiIiwiaWF0IjoxNTE2MDIwNTYyLCJuYmYiOjE1MTYwMjA1NjIsImV4cCI6NDY3MTY5NDE2Miwic3ViIjoiMjQiLCJzY29wZXMiOltdfQ.F78V_W9Yag4-_i_JzcEqZB9I-vimKBgjj9GBpw1IBy4'
 			}
 		}, params
 	), function (err, res, body) {
