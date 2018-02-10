@@ -8,6 +8,10 @@ var WEB_HOOK_REQUEST_URL = 'http://188.243.240.125:8087/',
 	SUCC_ORDER_ADD = 'Success: order added!',
 	ERR_ORDER_ADD = 'Error order added! ',
 	HOOK_TYPE_ORDER_CREATED = 'ride.created',
+	HOOK_TYPE_ORDER_UPDATED = 'ride.updated',
+	HOOK_TYPE_ORDER_CANCELED = 'ride.canceled',
+	HOOK_TYPE_ORDER_ACCEPTED = 'ride.accepted',
+	HOOK_TYPE_ORDER_COMPLETED = 'ride.completed',
 	request = require('request'),
 	express = require('express'),
 	bodyParser = require('body-parser'),
@@ -22,7 +26,8 @@ var WEB_HOOK_REQUEST_URL = 'http://188.243.240.125:8087/',
 			encrypt: false // Use this if you're on Windows Azure
 		}
 	}, connection,
-	baseLat = 59.9289443, baseLon = 30.2758098, radius = 2.0;
+	baseLat = 59.9289443, baseLon = 30.2758098, radius = 2.0,
+	phoneTrimPrefix = '+7';
 
 function getDistance(x1, y1, x2, y2) {
 	return Math.sqrt(
@@ -33,10 +38,10 @@ function getDistance(x1, y1, x2, y2) {
 }
 
 // parse application/x-www-form-urlencoded
-app.use(bodyParser.urlencoded({extended: false}))
+app.use(bodyParser.urlencoded({extended: false}));
 
 // parse application/json
-app.use(bodyParser.json())
+app.use(bodyParser.json());
 
 //web hook request callback
 app.all('/', function (req, res) {
@@ -57,18 +62,18 @@ app.all('/', function (req, res) {
 		passengers = getOrderAttr('passengers'),
 		luggage = getOrderAttr('luggage'),
 		distance = parseInt(getOrderAttr('travel-distance') || '0', 10),
-		phoneNumber = getOrderAttr('phone-number'),
-		fromCountry = getOrderAttr('location-from-country'),
-		fromCity = getOrderAttr('location-from-city'),
-		fromZip = getOrderAttr('location-from-zip'),
-		fromAddress = getOrderAttr('location-from-address'),
+		phoneNumber = String(getOrderAttr('phone-number') || ''),
+		fromCountry = getOrderAttr('location-from-country') || '',
+		fromCity = getOrderAttr('location-from-city') || '',
+		fromZip = getOrderAttr('location-from-zip') || '',
+		fromAddress = String(getOrderAttr('location-from-address') || ''),
 		fromLat = getOrderAttr('location-from-latitude'),
 		fromLon = getOrderAttr('location-from-longitude'),
 		fromIsAirport = !!getOrderAttr('location-from-is-airport'),
-		toCountry = getOrderAttr('location-to-country'),
-		toCity = getOrderAttr('location-to-city'),
-		toZip = getOrderAttr('location-to-zip'),
-		toAddress = getOrderAttr('location-to-address'),
+		toCountry = getOrderAttr('location-to-country') || '',
+		toCity = getOrderAttr('location-to-city') || '',
+		toZip = getOrderAttr('location-to-zip') || '',
+		toAddress = String(getOrderAttr('location-to-address') || ''),
 		toLat = getOrderAttr('location-to-latitude'),
 		toLon = getOrderAttr('location-to-longitude'),
 		toIsAirport = !!getOrderAttr('location-to-is-airport'),
@@ -106,8 +111,6 @@ app.all('/', function (req, res) {
 		pickedUp = getOrderAttr('picked-up'),
 		pickedUpAt = getOrderAttr('picked-up-at'),
 		acceptedAt = getOrderAttr('accepted-at'),
-		priceLevel = getOrderAttr('price-level'),
-		priceLevel = getOrderAttr('price-level'),
 		calcDistanceFrom = fromLat && fromLon &&
 			getDistance(fromLat, fromLon, baseLat, baseLon),
 		calcDistanceFromText = calcDistanceFrom || 'не определено',
@@ -119,43 +122,36 @@ app.all('/', function (req, res) {
 		return orderAttrs && orderAttrs[key];
 	}
 
-	console.log('hook called, orderLocFromZip=' + fromZip +
+	function prepareAddr(addr, fragments) {
+		fragments.forEach(function (fragment, index, array) {
+			fragment && addr.replace(', ' + fragment, '')
+				.replace(' ' + fragment, '');
+		});
+		return addr.replace('\'', '"');
+	}
+
+	if (!hookType) {
+		logAndResponse('Missing hook type!');
+		return;
+	}
+
+	console.log('hook called, type=' + hookType +
 		',orderLocFromCity=' + fromCity +
 		',orderPhoneNumber=' + phoneNumber +
 		',orderId=' + orderId +
-		',calcDistanceFrom=' + calcDistanceFromText +
-		',calcDistanceTo=' + calcDistanceToText);
-	if (!hookType) {
-		logAndResponse(ERR_MISS_HOOK_TYPE);
-		return;
-	}
+		',calcDistanceFrom=' + calcDistanceFromText);
 
 	if (hookType === HOOK_TYPE_ORDER_CREATED && orderId &&
 		calcDistanceFrom && calcDistanceFrom < radius) {
 
 		addOrderSQL = 'EXEC	[dbo].[InsertOrderWithParamsRClientFBot] @adres = N\'' +
-			'start' + '\', @enadres = N\'' + 'end' + '\',@phone = N\'' +
-			phoneNumber + '\',' + '@disp_id = -1, @status = 0, @color_check = 0,' +
+			prepareAddr(fromAddress, [fromCountry, fromZip]) + '\', @enadres = N\'' +
+			prepareAddr(toAddress, [toCountry, toZip]) + '\',@phone = N\'' +
+			phoneNumber.replace(phoneTrimPrefix, '') + '\',' +
+			' @disp_id = -1, @status = 0, @color_check = 0,' +
 			' @op_order = 0, @gsm_detect_code = 0, @deny_duplicate = 0,' +
 			' @colored_new = 0, @ab_num = N\'\', @client_id = ' + 1 +
 			', @ord_num = 0,@order_id = 0';
-
-		function acquireCallback(acqBody) {
-			var acqData = acqBody && acqBody.data,
-				acqType = acqData && acqData.type || '',
-				acqId = acqData && acqData.id || '';
-			if (acqType === 'ride' && acqId === orderId) {
-				queryRequest(addOrderSQL,
-					function (recordset) {
-						logAndResponse(SUCC_ORDER_ADD);
-					},
-					function (err) {
-						console.log(err);
-					});
-			} else {
-				logAndResponse('Bad acq response!');
-			}
-		}
 
 		console.log('SEND ACQUIRE POST REQUEST');
 		console.log('https://api.sandbox.franktaxibot.com/marketplace/v1/rides/' +
@@ -165,7 +161,13 @@ app.all('/', function (req, res) {
 				url: 'https://api.sandbox.franktaxibot.com/marketplace/v1/rides/' +
 				orderId + '/acquire',
 				method: 'POST'
-			}, acquireCallback);
+			},
+			acquireCallback,
+			{
+				addOrderSQL: addOrderSQL,
+				orderId : orderId
+			}
+		);
 
 
 	} else {
@@ -177,6 +179,76 @@ app.all('/', function (req, res) {
 		res.send(message);
 	}
 });
+
+function acquireCallback(acqBody, options) {
+	var acqData = acqBody && acqBody.data,
+		acqType = acqData && acqData.type || '',
+		acqId = acqData && acqData.id || '',
+		addOrderSQL = options && options.addOrderSQL,
+		orderId = options && options.orderId;
+
+	if (acqType === 'ride' && acqId === orderId && addOrderSQL) {
+		queryRequest(addOrderSQL,
+			function (recordset) {
+				console.log(SUCC_ORDER_ADD);
+				acceptOrder({orderId : orderId});
+			},
+			function (err) {
+				console.log(err);
+			});
+		return;
+	}
+
+	console.log('Bad acq response!');
+	return false;
+}
+
+function acceptOrder(options) {
+	var orderId = options && options.orderId;
+
+	console.log('SEND ACCEPT POST REQUEST');
+	console.log('https://api.sandbox.franktaxibot.com/marketplace/v1/rides/' +
+		orderId + '/accept');
+	sendAPIRequest(
+		{
+			url: 'https://api.sandbox.franktaxibot.com/marketplace/v1/rides/' +
+			orderId + '/accept',
+			method: 'POST',
+			body: JSON.stringify({
+				'driver-name' : 'Alexandr',
+				'driver-phone' : '+79883138837',
+				'car-plate' : 'SS 101 AG',
+				'car-model' : 'Lada Largus 7x'
+			})
+		},
+		acceptCallback,
+		{
+			orderId : orderId
+		}
+	);
+}
+
+function acceptCallback(acqBody, options) {
+	var acqData = acqBody && acqBody.data,
+		acqType = acqData && acqData.type || '',
+		accId = acqData && acqData.id || '',
+		orderId = options && options.orderId;
+
+	if (acqType === 'ride' && accId === orderId) {
+		console.log('Order accepted!');
+		/*queryRequest(addOrderSQL,
+			function (recordset) {
+				console.log(SUCC_ORDER_ADD);
+			},
+			function (err) {
+				console.log(err);
+			});*/
+		return;
+	}
+
+	logAndResponse('Bad accept response!');
+	return false;
+}
 
 app.listen(8087);
 
@@ -210,7 +282,7 @@ connection = new sql.ConnectionPool(config, function (err) {
 
 });
 
-function sendAPIRequest(params, success) {
+function sendAPIRequest(params, success, options) {
 	request(Object.assign(
 		{
 			method: 'GET',
@@ -228,7 +300,7 @@ function sendAPIRequest(params, success) {
 			}
 
 			try {
-				success && success(JSON.parse(body));
+				success && success(JSON.parse(body), options);
 			} catch (e) {
 				console.log('Error of parsing json: ' +
 					body + '\n' + JSON.stringify(params) + e);
@@ -249,7 +321,7 @@ sendAPIRequest(
 		url: 'https://api.sandbox.franktaxibot.com/webhooks/v1',
 	}, parseExistWebhooks);
 
-function parseExistWebhooks(hooksData) {
+function parseExistWebhooks(hooksData, options) {
 	var hooks = hooksData && hooksData.data,
 		isBadHook = true,
 		hookAttributes;
