@@ -26,7 +26,7 @@ var WEB_HOOK_REQUEST_URL = 'http://188.243.240.125:8087/',
 			encrypt: false // Use this if you're on Windows Azure
 		}
 	}, connection,
-	baseLat = 59.9289443, baseLon = 30.2758098, radius = 2.0,
+	baseLat = 59.9289443, baseLon = 30.2758098, radius = 20.0,
 	phoneTrimPrefix = '+7';
 
 function getDistance(x1, y1, x2, y2) {
@@ -215,6 +215,8 @@ function acceptOrder(options) {
 			orderId + '/accept',
 			method: 'POST',
 			body: JSON.stringify({
+				//'partner-ride-id' : -1,
+				//'driver-id' : -1,
 				'driver-name' : 'Alexandr',
 				'driver-phone' : '+79883138837',
 				'car-plate' : 'SS 101 AG',
@@ -236,6 +238,68 @@ function acceptCallback(acqBody, options) {
 
 	if (acqType === 'ride' && accId === orderId) {
 		console.log('Order accepted!');
+		delayCompleteOrder({orderId : orderId});
+		/*queryRequest(addOrderSQL,
+			function (recordset) {
+				console.log(SUCC_ORDER_ADD);
+			},
+			function (err) {
+				console.log(err);
+			});*/
+		return;
+	}
+
+	function delayCompleteOrder(options) {
+		setTimeout(function() {
+			completeOrder(options)
+		}, 2000);
+	}
+
+	logAndResponse('Bad accept response!');
+	return false;
+}
+
+function completeOrder(options) {
+	var orderId = options && options.orderId;
+
+	console.log('SEND COMPLETE POST REQUEST');
+	console.log('https://api.sandbox.franktaxibot.com/marketplace/v1/rides/' +
+		orderId + '/complete');
+	sendAPIRequest(
+		{
+			url: 'https://api.sandbox.franktaxibot.com/marketplace/v1/rides/' +
+			orderId + '/complete',
+			method: 'POST',
+			body: JSON.stringify({
+				'final-fare' : 250.0,
+				'final-distance' : 5600,
+				'final-time' : 21
+				//'final-base-fare' : 50,
+				//'final-normal-fare' : 50,
+				//'final-surge' : 0,
+				//'driver-id' : -1,
+				//'driver-name' : 'Alexandr',
+				//'driver-phone' : '+79883138837',
+				//'car-plate' : 'SS 101 AG',
+				//'car-model' : 'Lada Largus 7x'
+				//'pickup-in' : 50
+			})
+		},
+		completeCallback,
+		{
+			orderId : orderId
+		}
+	);
+}
+
+function completeCallback(acqBody, options) {
+	var acqData = acqBody && acqBody.data,
+		acqType = acqData && acqData.type || '',
+		accId = acqData && acqData.id || '',
+		orderId = options && options.orderId;
+
+	if (acqType === 'ride' && accId === orderId) {
+		console.log('Order completed!');
 		/*queryRequest(addOrderSQL,
 			function (recordset) {
 				console.log(SUCC_ORDER_ADD);
