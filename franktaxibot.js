@@ -135,13 +135,18 @@ app.all('/', function (req, res) {
 		return;
 	}
 
+	if (!orderId) {
+		logAndResponse('Missing order id!');
+		return;
+	}
+
 	console.log('hook called, type=' + hookType +
 		',orderLocFromCity=' + fromCity +
 		',orderPhoneNumber=' + phoneNumber +
 		',orderId=' + orderId +
 		',calcDistanceFrom=' + calcDistanceFromText);
 
-	if (hookType === HOOK_TYPE_ORDER_CREATED && orderId &&
+	if (hookType === HOOK_TYPE_ORDER_CREATED &&
 		calcDistanceFrom && calcDistanceFrom < radius) {
 
 		addOrderSQL = 'EXEC	[dbo].[InsertOrderWithParamsRClientFBot] @adres = N\'' +
@@ -169,7 +174,15 @@ app.all('/', function (req, res) {
 			}
 		);
 
-
+		logAndResponse('Detecting order.create hook!');
+	} else if (hookType === HOOK_TYPE_ORDER_ACCEPTED) {
+		logAndResponse('Detecting order.accepted hook!');
+	} else if (hookType === HOOK_TYPE_ORDER_CANCELED) {
+		logAndResponse('Detecting order.canceled hook!');
+	} else if (hookType === HOOK_TYPE_ORDER_UPDATED) {
+		logAndResponse('Detecting order.updated hook!');
+	} else if (hookType === HOOK_TYPE_ORDER_COMPLETED) {
+		logAndResponse('Detecting order.completed hook!');
 	} else {
 		logAndResponse(ERR_MISS_UNKNOWN_TYPE);
 	}
