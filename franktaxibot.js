@@ -18,8 +18,8 @@ var WEB_HOOK_REQUEST_URL = 'http://188.243.240.125:8087/',
 	app = module.exports.app = express(),
 	sql = require('mssql'),
 	config = {
-		user: 'app_server',
-		password: 'app_server',
+		user: 'franktaxibot',
+		password: 'franktaxibot',
 		server: '192.168.1.90\\SQLEXPRESS', // You can use 'localhost\\instance' to connect to named instance
 		database: 'TD5R1',
 		options: {
@@ -156,7 +156,7 @@ app.all('/', function (req, res) {
 			' @disp_id = -1, @status = 0, @color_check = 0,' +
 			' @op_order = 0, @gsm_detect_code = 0, @deny_duplicate = 0,' +
 			' @colored_new = 0, @ab_num = N\'\', @client_id = ' + 1 +
-			', @ord_num = 0,@order_id = 0';
+			', @src_id = N\'' + orderId + '\', @ord_num = 0,@order_id = 0';
 
 		console.log('SEND ACQUIRE POST REQUEST');
 		console.log('https://api.sandbox.franktaxibot.com/marketplace/v1/rides/' +
@@ -170,7 +170,7 @@ app.all('/', function (req, res) {
 			acquireCallback,
 			{
 				addOrderSQL: addOrderSQL,
-				orderId : orderId
+				orderId: orderId
 			}
 		);
 
@@ -204,7 +204,7 @@ function acquireCallback(acqBody, options) {
 		queryRequest(addOrderSQL,
 			function (recordset) {
 				console.log(SUCC_ORDER_ADD);
-				acceptOrder({orderId : orderId});
+				acceptOrder({orderId: orderId});
 			},
 			function (err) {
 				console.log(err);
@@ -230,15 +230,15 @@ function acceptOrder(options) {
 			body: JSON.stringify({
 				//'partner-ride-id' : -1,
 				//'driver-id' : -1,
-				'driver-name' : 'Alexandr',
-				'driver-phone' : '+79883138837',
-				'car-plate' : 'SS 101 AG',
-				'car-model' : 'Lada Largus 7x'
+				'driver-name': 'Alexandr',
+				'driver-phone': '+79883138837',
+				'car-plate': 'SS 101 AG',
+				'car-model': 'Lada Largus 7x'
 			})
 		},
 		acceptCallback,
 		{
-			orderId : orderId
+			orderId: orderId
 		}
 	);
 }
@@ -251,7 +251,7 @@ function acceptCallback(acqBody, options) {
 
 	if (acqType === 'ride' && accId === orderId) {
 		console.log('Order accepted!');
-		delayCompleteOrder({orderId : orderId});
+		delayCompleteOrder({orderId: orderId});
 		/*queryRequest(addOrderSQL,
 			function (recordset) {
 				console.log(SUCC_ORDER_ADD);
@@ -263,7 +263,7 @@ function acceptCallback(acqBody, options) {
 	}
 
 	function delayCompleteOrder(options) {
-		setTimeout(function() {
+		setTimeout(function () {
 			completeOrder(options)
 		}, 2000);
 	}
@@ -284,9 +284,9 @@ function completeOrder(options) {
 			orderId + '/complete',
 			method: 'POST',
 			body: JSON.stringify({
-				'final-fare' : 250.0,
-				'final-distance' : 5600,
-				'final-time' : 21
+				'final-fare': 250.0,
+				'final-distance': 5600,
+				'final-time': 21
 				//'final-base-fare' : 50,
 				//'final-normal-fare' : 50,
 				//'final-surge' : 0,
@@ -300,7 +300,7 @@ function completeOrder(options) {
 		},
 		completeCallback,
 		{
-			orderId : orderId
+			orderId: orderId
 		}
 	);
 }
@@ -438,9 +438,50 @@ function deleteWebHook(id) {
 		});
 }
 
-function checkBot() {
-	//console.log('[' + new Date().toUTCString() + ']');
+function checkBotData() {
+	queryRequest('SELECT EstjVneshnieManip FROM Personal' +
+		' WHERE Login = \'franktaxibot\' AND EstjVneshnieManip = 1',
+		function (recordset) {
+			var recordsetData = recordset && recordset.recordset;
+			recordsetData && recordsetData.length && updateFlagProcessing();
+		});
 	return false;
 }
 
-setInterval(checkBot, 10000);
+function updateFlagProcessing() {
+	console.log('Data updating:[' + new Date().toUTCString() + ']');
+	resetUpdateFlag();
+	checkAcceptedOrders();
+	checkCompletedOrders();
+	return false;
+}
+
+function resetUpdateFlag() {
+	queryRequest('UPDATE Personal SET EstjVneshnieManip = 0' +
+		' WHERE Login = \'franktaxibot\'', null,
+		function (err) {
+			console.log('Error of updateFlag reset!');
+		});
+	return false;
+}
+
+function checkAcceptedOrders() {
+	queryRequest('SELECT src_id as orderId FROM ActiveOrders' +
+		' WHERE src = 1 AND src_status_code = 0 AND ' +
+		' REMOTE_SET = 8 AND REMOTE_SYNC = 0',
+		function (recordset) {
+			var recordsetData = recordset && recordset.recordset;
+
+			recordsetData && recordsetData.length &&
+			recordsetData.forEach(function (element, index, array) {
+				element.orderId && acceptOrder({orderId: element.orderId});
+			});
+		});
+	return false;
+}
+
+function checkCompletedOrders() {
+	return false;
+}
+
+setInterval(checkBotData, 3000);
