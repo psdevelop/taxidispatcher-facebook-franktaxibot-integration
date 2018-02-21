@@ -204,7 +204,6 @@ function acquireCallback(acqBody, options) {
 		queryRequest(addOrderSQL,
 			function (recordset) {
 				console.log(SUCC_ORDER_ADD);
-				acceptOrder({orderId: orderId});
 			},
 			function (err) {
 				console.log(err);
@@ -251,24 +250,10 @@ function acceptCallback(acqBody, options) {
 
 	if (acqType === 'ride' && accId === orderId) {
 		console.log('Order accepted!');
-		delayCompleteOrder({orderId: orderId});
-		/*queryRequest(addOrderSQL,
-			function (recordset) {
-				console.log(SUCC_ORDER_ADD);
-			},
-			function (err) {
-				console.log(err);
-			});*/
 		return;
 	}
 
-	function delayCompleteOrder(options) {
-		setTimeout(function () {
-			completeOrder(options)
-		}, 2000);
-	}
-
-	logAndResponse('Bad accept response!');
+	console.log('Bad accept response!');
 	return false;
 }
 
@@ -313,17 +298,10 @@ function completeCallback(acqBody, options) {
 
 	if (acqType === 'ride' && accId === orderId) {
 		console.log('Order completed!');
-		/*queryRequest(addOrderSQL,
-			function (recordset) {
-				console.log(SUCC_ORDER_ADD);
-			},
-			function (err) {
-				console.log(err);
-			});*/
 		return;
 	}
 
-	logAndResponse('Bad accept response!');
+	console.log('Bad complete response!');
 	return false;
 }
 
@@ -470,18 +448,64 @@ function checkAcceptedOrders() {
 		' WHERE src = 1 AND src_status_code = 0 AND ' +
 		' REMOTE_SET = 8 AND REMOTE_SYNC = 0',
 		function (recordset) {
-			var recordsetData = recordset && recordset.recordset;
+			var recordsetData = recordset && recordset.recordset,
+				acceptOptions, orderId;
 
 			recordsetData && recordsetData.length &&
 			recordsetData.forEach(function (element, index, array) {
-				element.orderId && acceptOrder({orderId: element.orderId});
+				orderId = element.orderId;
+				acceptOptions = {orderId: orderId};
+				orderId && acceptOrderInDB(acceptOptions);
+				orderId && acceptOrder(acceptOptions);
 			});
 		});
 	return false;
 }
 
+function acceptOrderInDB(options) {
+	var orderId = options && options.orderId;
+	queryRequest('UPDATE Zakaz SET src_status_code = 8' +
+		' WHERE src = 1 AND src_status_code <> 8 AND ' +
+		' REMOTE_SET = 8 AND REMOTE_SYNC = 0 AND src_id = \'' + orderId + '\'',
+		function (recordset) {
+			console.log('SUCCESS ACCEPT ORDER IN DB');
+		},
+		function (err) {
+			console.log('ERROR ACCEPT ORDER IN DB: ' + err);
+		});
+}
+
 function checkCompletedOrders() {
+	queryRequest('SELECT src_id as orderId FROM Zakaz' +
+		' WHERE src = 1 AND src_status_code <> 100 AND ' +
+		' REMOTE_SET IN (26, 100) AND Arhivnyi = 0',
+		function (recordset) {
+			var recordsetData = recordset && recordset.recordset,
+				completeOptions, orderId;
+
+			recordsetData && recordsetData.length &&
+			recordsetData.forEach(function (element, index, array) {
+				orderId = element.orderId;
+				console.log(orderId);
+				completeOptions = {orderId: orderId};
+				orderId && completeOrderInDB(completeOptions);
+				orderId && completeOrder(completeOptions);
+			});
+		});
 	return false;
+}
+
+function completeOrderInDB(options) {
+	var orderId = options && options.orderId;
+	queryRequest('UPDATE Zakaz SET src_status_code = 100' +
+		' WHERE src = 1 AND src_status_code <> 100 AND ' +
+		' (REMOTE_SET IN (26, 100) OR Zavershyon = 1) AND Arhivnyi = 0 AND src_id = \'' + orderId + '\'',
+		function (recordset) {
+			console.log('SUCCESS COMPLETE ORDER IN DB');
+		},
+		function (err) {
+			console.log('ERROR COMPLETE ORDER IN DB: ' + err);
+		});
 }
 
 setInterval(checkBotData, 3000);
