@@ -178,6 +178,12 @@ app.all('/', function (req, res) {
 	} else if (hookType === HOOK_TYPE_ORDER_ACCEPTED) {
 		logAndResponse('Detecting order.accepted hook!');
 	} else if (hookType === HOOK_TYPE_ORDER_CANCELED) {
+		cancelOrderInDB(
+			{
+				orderId : orderId,
+				fromBot : true
+			}
+		);
 		logAndResponse('Detecting order.canceled hook!');
 	} else if (hookType === HOOK_TYPE_ORDER_UPDATED) {
 		logAndResponse('Detecting order.updated hook!');
@@ -302,6 +308,43 @@ function completeCallback(acqBody, options) {
 	}
 
 	console.log('Bad complete response!');
+	return false;
+}
+
+function cancelOrder(options) {
+	var orderId = options && options.orderId;
+
+	console.log('SEND CANCEL POST REQUEST');
+	console.log('https://api.sandbox.franktaxibot.com/marketplace/v1/rides/' +
+		orderId + '/cancel');
+	sendAPIRequest(
+		{
+			url: 'https://api.sandbox.franktaxibot.com/marketplace/v1/rides/' +
+			orderId + '/cancel',
+			method: 'POST',
+			body: JSON.stringify({
+				//'reason' : 'driver is dest error',
+			})
+		},
+		cancelCallback,
+		{
+			orderId: orderId
+		}
+	);
+}
+
+function cancelCallback(acqBody, options) {
+	var acqData = acqBody && acqBody.data,
+		acqType = acqData && acqData.type || '',
+		accId = acqData && acqData.id || '',
+		orderId = options && options.orderId;
+
+	if (acqType === 'ride' && accId === orderId) {
+		console.log('Order canceled!');
+		return;
+	}
+
+	console.log('Bad cancel response!');
 	return false;
 }
 
@@ -445,7 +488,7 @@ function resetUpdateFlag() {
 
 function checkAcceptedOrders() {
 	queryRequest('SELECT src_id as orderId FROM ActiveOrders' +
-		' WHERE src = 1 AND src_status_code = 0 AND ' +
+		' WHERE src = 1 AND src_status_code < 8 AND ' +
 		' REMOTE_SET = 8 AND REMOTE_SYNC = 0',
 		function (recordset) {
 			var recordsetData = recordset && recordset.recordset,
@@ -463,9 +506,10 @@ function checkAcceptedOrders() {
 }
 
 function acceptOrderInDB(options) {
-	var orderId = options && options.orderId;
+	var orderId = options && options.orderId,
+		fromBot = options && options.fromBot;
 	queryRequest('UPDATE Zakaz SET src_status_code = 8' +
-		' WHERE src = 1 AND src_status_code <> 8 AND ' +
+		' WHERE src = 1 AND src_status_code < 8 AND ' +
 		' REMOTE_SET = 8 AND REMOTE_SYNC = 0 AND src_id = \'' + orderId + '\'',
 		function (recordset) {
 			console.log('SUCCESS ACCEPT ORDER IN DB');
@@ -478,7 +522,7 @@ function acceptOrderInDB(options) {
 function checkCompletedOrders() {
 	queryRequest('SELECT src_id as orderId FROM Zakaz' +
 		' WHERE src = 1 AND src_status_code <> 100 AND ' +
-		' REMOTE_SET IN (26, 100) AND Arhivnyi = 0',
+		' (REMOTE_SET IN (26, 100) OR Zavershyon = 1) AND Arhivnyi = 0',
 		function (recordset) {
 			var recordsetData = recordset && recordset.recordset,
 				completeOptions, orderId;
@@ -496,10 +540,49 @@ function checkCompletedOrders() {
 }
 
 function completeOrderInDB(options) {
-	var orderId = options && options.orderId;
+	var orderId = options && options.orderId,
+		fromBot = options && options.fromBot;
 	queryRequest('UPDATE Zakaz SET src_status_code = 100' +
 		' WHERE src = 1 AND src_status_code <> 100 AND ' +
 		' (REMOTE_SET IN (26, 100) OR Zavershyon = 1) AND Arhivnyi = 0 AND src_id = \'' + orderId + '\'',
+		function (recordset) {
+			console.log('SUCCESS COMPLETE ORDER IN DB');
+		},
+		function (err) {
+			console.log('ERROR COMPLETE ORDER IN DB: ' + err);
+		});
+}
+
+function checkCanceledOrders() {
+	queryRequest('SELECT src_id as orderId FROM Zakaz' +
+		' WHERE src = 1 AND src_status_code = 8 AND ' +
+		' (REMOTE_SET NOT IN (8, 26, 100) OR Arhivnyi = 1)',
+		function (recordset) {
+			var recordsetData = recordset && recordset.recordset,
+				cancelOptions, orderId;
+
+			recordsetData && recordsetData.length &&
+			recordsetData.forEach(function (element, index, array) {
+				orderId = element.orderId;
+				console.log(orderId);
+				cancelOptions = {orderId: orderId};
+				orderId && cancelOrderInDB(cancelOptions);
+				orderId && cancelOrder(cancelOptions);
+			});
+		});
+	return false;
+}
+
+function cancelOrderInDB(options) {
+	var orderId = options && options.orderId,
+		fromBot = options && options.fromBot,
+		updSql = fromBot ?
+			' UPDATE Zakaz SET src_status_code = 100, ' +
+			' rclient_status = -1 WHERE src = 1 ' :
+			' UPDATE Zakaz SET src_status_code = 100 ' +
+			' WHERE src = 1 AND src_status_code = 8 AND ' +
+			' (REMOTE_SET NOT IN (8, 26, 100) OR Arhivnyi = 1) ';
+	queryRequest(updSql + ' AND src_id = \'' + orderId + '\'',
 		function (recordset) {
 			console.log('SUCCESS COMPLETE ORDER IN DB');
 		},
