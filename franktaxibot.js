@@ -156,7 +156,7 @@ app.all('/', function (req, res) {
 			' @disp_id = -1, @status = 0, @color_check = 0,' +
 			' @op_order = 0, @gsm_detect_code = 0, @deny_duplicate = 0,' +
 			' @colored_new = 0, @ab_num = N\'\', @client_id = ' + 1 +
-			', @src_id = N\'' + orderId + '\', @ord_num = 0,@order_id = 0';
+			', @src_id = N\'' + orderId + '\', @ord_num = 0, @order_id = 0';
 
 		console.log('SEND ACQUIRE POST REQUEST');
 		console.log('https://api.sandbox.franktaxibot.com/marketplace/v1/rides/' +
@@ -474,6 +474,7 @@ function updateFlagProcessing() {
 	resetUpdateFlag();
 	checkAcceptedOrders();
 	checkCompletedOrders();
+	checkCanceledOrders();
 	return false;
 }
 
@@ -576,18 +577,14 @@ function checkCanceledOrders() {
 function cancelOrderInDB(options) {
 	var orderId = options && options.orderId,
 		fromBot = options && options.fromBot,
-		updSql = fromBot ?
-			' UPDATE Zakaz SET src_status_code = 100, ' +
-			' rclient_status = -1 WHERE src = 1 ' :
-			' UPDATE Zakaz SET src_status_code = 100 ' +
-			' WHERE src = 1 AND src_status_code = 8 AND ' +
-			' (REMOTE_SET NOT IN (8, 26, 100) OR Arhivnyi = 1) ';
-	queryRequest(updSql + ' AND src_id = \'' + orderId + '\'',
+		updSql = 'EXEC	[dbo].[CancelOrdersRClientFBot] @order_id = N\'' +
+			orderId + '\', @is_bot = ' + (fromBot ? 1 : 0) + ', @res =  0';
+	queryRequest(updSql,
 		function (recordset) {
-			console.log('SUCCESS COMPLETE ORDER IN DB');
+			console.log('SUCCESS CANCEL ORDER IN DB');
 		},
 		function (err) {
-			console.log('ERROR COMPLETE ORDER IN DB: ' + err);
+			console.log('ERROR CANCEL ORDER IN DB: ' + err);
 		});
 }
 
