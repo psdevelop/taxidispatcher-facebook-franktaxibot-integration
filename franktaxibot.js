@@ -223,6 +223,8 @@ function acquireCallback(acqBody, options) {
 
 function acceptOrder(options) {
 	var orderId = options && options.orderId;
+	//'partner-ride-id' : -1,
+	//'driver-id' : -1,
 
 	console.log('SEND ACCEPT POST REQUEST');
 	console.log('https://api.sandbox.franktaxibot.com/marketplace/v1/rides/' +
@@ -232,14 +234,7 @@ function acceptOrder(options) {
 			url: 'https://api.sandbox.franktaxibot.com/marketplace/v1/rides/' +
 			orderId + '/accept',
 			method: 'POST',
-			body: JSON.stringify({
-				//'partner-ride-id' : -1,
-				//'driver-id' : -1,
-				'driver-name': 'Alexandr',
-				'driver-phone': '+79883138837',
-				'car-plate': 'SS 101 AG',
-				'car-model': 'Lada Largus 7x'
-			})
+			body: JSON.stringify(options)
 		},
 		acceptCallback,
 		{
@@ -265,6 +260,18 @@ function acceptCallback(acqBody, options) {
 
 function completeOrder(options) {
 	var orderId = options && options.orderId;
+	//'final-fare': 250.0,
+	//'final-distance': 5600,
+	//'final-time': 21
+	//'final-base-fare' : 50,
+	//'final-normal-fare' : 50,
+	//'final-surge' : 0,
+	//'driver-id' : -1,
+	//'driver-name' : 'Alexandr',
+	//'driver-phone' : '+79883138837',
+	//'car-plate' : 'SS 101 AG',
+	//'car-model' : 'Lada Largus 7x'
+	//'pickup-in' : 50
 
 	console.log('SEND COMPLETE POST REQUEST');
 	console.log('https://api.sandbox.franktaxibot.com/marketplace/v1/rides/' +
@@ -274,20 +281,7 @@ function completeOrder(options) {
 			url: 'https://api.sandbox.franktaxibot.com/marketplace/v1/rides/' +
 			orderId + '/complete',
 			method: 'POST',
-			body: JSON.stringify({
-				'final-fare': 250.0,
-				'final-distance': 5600,
-				'final-time': 21
-				//'final-base-fare' : 50,
-				//'final-normal-fare' : 50,
-				//'final-surge' : 0,
-				//'driver-id' : -1,
-				//'driver-name' : 'Alexandr',
-				//'driver-phone' : '+79883138837',
-				//'car-plate' : 'SS 101 AG',
-				//'car-model' : 'Lada Largus 7x'
-				//'pickup-in' : 50
-			})
+			body: JSON.stringify(options)
 		},
 		completeCallback,
 		{
@@ -488,17 +482,25 @@ function resetUpdateFlag() {
 }
 
 function checkAcceptedOrders() {
-	queryRequest('SELECT src_id as orderId FROM ActiveOrders' +
+	queryRequest('SELECT src_id as orderId, Marka_avtomobilya as car_model, ' +
+		' Gos_nomernoi_znak as car_plate, phone_number as driver_phone, ' +
+		' driver_name FROM ActiveOrders ' +
 		' WHERE src = 1 AND src_status_code < 8 AND ' +
-		' REMOTE_SET = 8 AND REMOTE_SYNC = 0',
+		' REMOTE_SET = 8 AND REMOTE_SYNC = 0 AND Zavershyon = 0',
 		function (recordset) {
 			var recordsetData = recordset && recordset.recordset,
-				acceptOptions, orderId;
+				acceptOptions, orderId, driverName;
 
 			recordsetData && recordsetData.length &&
 			recordsetData.forEach(function (element, index, array) {
 				orderId = element.orderId;
-				acceptOptions = {orderId: orderId};
+				acceptOptions = {
+					orderId : orderId,
+					'driver-name' : element.driver_name,
+					'driver-phone' : element.driver_phone,
+					'car-model' : element.car_model,
+					'car-plate' : element.car_plate
+				};
 				orderId && acceptOrderInDB(acceptOptions);
 				orderId && acceptOrder(acceptOptions);
 			});
@@ -521,7 +523,9 @@ function acceptOrderInDB(options) {
 }
 
 function checkCompletedOrders() {
-	queryRequest('SELECT src_id as orderId FROM Zakaz' +
+	queryRequest('SELECT src_id as orderId, Uslovn_stoim as order_summ, ' +
+		' REMOTE_SUMM as driver_summ, fixed_time as order_time, ' +
+		' tm_distance as order_distance FROM Zakaz' +
 		' WHERE src = 1 AND src_status_code <> 100 AND ' +
 		' (REMOTE_SET IN (26, 100) OR Zavershyon = 1) AND Arhivnyi = 0',
 		function (recordset) {
@@ -532,7 +536,12 @@ function checkCompletedOrders() {
 			recordsetData.forEach(function (element, index, array) {
 				orderId = element.orderId;
 				console.log(orderId);
-				completeOptions = {orderId: orderId};
+				completeOptions = {
+					orderId: orderId,
+					'final-fare': element.order_summ || '',
+					'final-distance': element.order_distance || '',
+					'final-time': element.order_time || ''
+				};
 				orderId && completeOrderInDB(completeOptions);
 				orderId && completeOrder(completeOptions);
 			});
