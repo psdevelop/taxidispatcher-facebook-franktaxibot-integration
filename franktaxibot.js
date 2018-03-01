@@ -180,8 +180,8 @@ app.all('/', function (req, res) {
 	} else if (hookType === HOOK_TYPE_ORDER_CANCELED) {
 		cancelOrderInDB(
 			{
-				orderId : orderId,
-				fromBot : true
+				orderId: orderId,
+				fromBot: true
 			}
 		);
 		logAndResponse('Detecting order.canceled hook!');
@@ -342,6 +342,41 @@ function cancelCallback(acqBody, options) {
 	return false;
 }
 
+function updateOrder(options) {
+	var orderId = options && options.orderId;
+
+	console.log('SEND UPDATE PATCH REQUEST');
+	console.log('https://api.sandbox.franktaxibot.com/' +
+		'marketplace/v1/rides/' + orderId);
+	sendAPIRequest(
+		{
+			url: 'https://api.sandbox.franktaxibot.com/' +
+			'marketplace/v1/rides/' + orderId,
+			method: 'PATCH',
+			body: JSON.stringify(options)
+		},
+		updateCallback,
+		{
+			orderId: orderId
+		}
+	);
+}
+
+function updateCallback(acqBody, options) {
+	var acqData = acqBody && acqBody.data,
+		acqType = acqData && acqData.type || '',
+		accId = acqData && acqData.id || '',
+		orderId = options && options.orderId;
+
+	if (acqType === 'ride' && accId === orderId) {
+		console.log('Order updated!');
+		return;
+	}
+
+	console.log('Bad update response!');
+	return false;
+}
+
 app.listen(8087);
 
 console.log('Integration server TaxiDispatcher with franktaxibot start, port 8087...');
@@ -469,6 +504,7 @@ function updateFlagProcessing() {
 	checkAcceptedOrders();
 	checkCompletedOrders();
 	checkCanceledOrders();
+	checkOnPlaceOrders();
 	return false;
 }
 
@@ -495,11 +531,11 @@ function checkAcceptedOrders() {
 			recordsetData.forEach(function (element, index, array) {
 				orderId = element.orderId;
 				acceptOptions = {
-					orderId : orderId,
-					'driver-name' : element.driver_name,
-					'driver-phone' : element.driver_phone,
-					'car-model' : element.car_model,
-					'car-plate' : element.car_plate
+					orderId: orderId,
+					'driver-name': element.driver_name,
+					'driver-phone': element.driver_phone,
+					'car-model': element.car_model,
+					'car-plate': element.car_plate
 				};
 				orderId && acceptOrderInDB(acceptOptions);
 				orderId && acceptOrder(acceptOptions);
@@ -594,6 +630,58 @@ function cancelOrderInDB(options) {
 		},
 		function (err) {
 			console.log('ERROR CANCEL ORDER IN DB: ' + err);
+		});
+}
+
+function checkOnPlaceOrders() {
+	queryRequest('SELECT src_id as orderId FROM ActiveOrders ' +
+		' WHERE src = 1 AND src_status_code = 8 AND ' +
+		' REMOTE_SET = 8 AND REMOTE_SYNC = 0 AND Zavershyon = 0 AND ' +
+		' on_place = 1 AND src_on_place = 0',
+		function (recordset) {
+			var recordsetData = recordset && recordset.recordset,
+				orderOptions, orderId;
+
+			recordsetData && recordsetData.length &&
+			recordsetData.forEach(function (element, index, array) {
+				orderId = element.orderId;
+				if (!orderId) {
+					return;
+				}
+
+				orderOptions = {
+					orderId: orderId
+				};
+				setOnPlaceOrderInDB(orderOptions);
+				sendOnPlaceOrder(orderOptions);
+			});
+		});
+	return false;
+}
+
+function sendOnPlaceOrder(options) {
+	updateOrder(
+		Object.assign(
+			{
+				'pickup-in' : 0
+			},
+			options
+		)
+	);
+}
+
+function setOnPlaceOrderInDB(options) {
+	var orderId = options && options.orderId,
+		updSql = 'UPDATE Zakaz SET src_on_place = 1 ' +
+			' WHERE src = 1 AND src_status_code = 8 AND ' +
+			' REMOTE_SET = 8 AND REMOTE_SYNC = 0 AND Zavershyon = 0 AND ' +
+			' on_place = 1 AND src_on_place = 0 AND src_id = \'' + orderId + '\'';
+	queryRequest(updSql,
+		function (recordset) {
+			console.log('SUCCESS ONPLACE ORDER IN DB');
+		},
+		function (err) {
+			console.log('ERROR ONPLACE ORDER IN DB: ' + err);
 		});
 }
 
