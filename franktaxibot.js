@@ -41,7 +41,7 @@ function getDistance(x1, y1, x2, y2) {
 app.use(bodyParser.urlencoded({extended: false}));
 
 // parse application/json
-app.use(bodyParser.json());
+app.use(bodyParser.json({type: 'application/*+json'}));
 
 //web hook request callback
 app.all('/', function (req, res) {
@@ -131,11 +131,13 @@ app.all('/', function (req, res) {
 	}
 
 	if (!hookType) {
+		console.log('body: ' + JSON.stringify(body));
 		logAndResponse('Missing hook type!');
 		return;
 	}
 
 	if (!orderId) {
+		console.log('body: ' + JSON.stringify(body));
 		logAndResponse('Missing order id!');
 		return;
 	}
@@ -190,7 +192,7 @@ app.all('/', function (req, res) {
 	} else if (hookType === HOOK_TYPE_ORDER_COMPLETED) {
 		logAndResponse('Detecting order.completed hook!');
 	} else {
-		logAndResponse(ERR_MISS_UNKNOWN_TYPE);
+		logAndResponse(ERR_MISS_UNKNOWN_TYPE + hookType);
 	}
 
 	function logAndResponse(message) {
@@ -414,7 +416,7 @@ function sendAPIRequest(params, success, options) {
 		{
 			method: 'GET',
 			headers: {
-				Authorization: 'Bearer ..--'
+				Authorization: 'Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiIsImp0aSI6ImYwNjc2NmQ5YzlhYzliZTVhYzYyNThiYTJmOWRjNzcxZDQxMDRjYzlhYmE5Y2VjMzBlODgxOTQ4Mjc3MzIxZDkxNjJiZGM0N2JjYTYxZDJiIn0.eyJhdWQiOiJmMWFiMzk1Mzk4ODU3Y2Y2MjE2YSIsImp0aSI6ImYwNjc2NmQ5YzlhYzliZTVhYzYyNThiYTJmOWRjNzcxZDQxMDRjYzlhYmE5Y2VjMzBlODgxOTQ4Mjc3MzIxZDkxNjJiZGM0N2JjYTYxZDJiIiwiaWF0IjoxNTE2MDIwNTYyLCJuYmYiOjE1MTYwMjA1NjIsImV4cCI6NDY3MTY5NDE2Miwic3ViIjoiMjQiLCJzY29wZXMiOltdfQ.F78V_W9Yag4-_i_JzcEqZB9I-vimKBgjj9GBpw1IBy4'
 			}
 		}, params
 	), function (err, res, body) {
@@ -520,16 +522,17 @@ function resetUpdateFlag() {
 function checkAcceptedOrders() {
 	queryRequest('SELECT src_id as orderId, Marka_avtomobilya as car_model, ' +
 		' Gos_nomernoi_znak as car_plate, phone_number as driver_phone, ' +
-		' driver_name FROM ActiveOrders ' +
+		' driver_name, src_wait_sended, WAITING as wtime FROM ActiveOrders ' +
 		' WHERE src = 1 AND src_status_code < 8 AND ' +
 		' REMOTE_SET = 8 AND REMOTE_SYNC = 0 AND Zavershyon = 0',
 		function (recordset) {
 			var recordsetData = recordset && recordset.recordset,
-				acceptOptions, orderId, driverName;
+				acceptOptions, orderId, driverName, wtime;
 
 			recordsetData && recordsetData.length &&
 			recordsetData.forEach(function (element, index, array) {
 				orderId = element.orderId;
+				wtime = element.wtime;
 				acceptOptions = {
 					orderId: orderId,
 					'driver-name': element.driver_name,
@@ -537,6 +540,7 @@ function checkAcceptedOrders() {
 					'car-model': element.car_model,
 					'car-plate': element.car_plate
 				};
+				wtime && (acceptOptions['pickup-in'] = wtime);
 				orderId && acceptOrderInDB(acceptOptions);
 				orderId && acceptOrder(acceptOptions);
 			});
