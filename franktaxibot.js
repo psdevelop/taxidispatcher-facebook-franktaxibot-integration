@@ -668,7 +668,7 @@ function sendOnPlaceOrder(options) {
 	updateOrder(
 		Object.assign(
 			{
-				'pickup-in' : 0
+				'pickup-in': 0
 			},
 			options
 		)
@@ -713,8 +713,8 @@ function checkUpdatedDriverCoords() {
 
 				updateOrder({
 					orderId: orderId,
-					'car-latitude' : lat,
-					'car-longitude' : lon
+					'car-latitude': lat,
+					'car-longitude': lon
 				});
 
 			});
