@@ -349,7 +349,7 @@ function updateOrder(options) {
 
 	console.log('SEND UPDATE PATCH REQUEST');
 	console.log('https://api.sandbox.franktaxibot.com/' +
-		'marketplace/v1/rides/' + orderId);
+		'marketplace/v1/rides/' + orderId + JSON.stringify(options));
 	sendAPIRequest(
 		{
 			url: 'https://api.sandbox.franktaxibot.com/' +
@@ -416,7 +416,7 @@ function sendAPIRequest(params, success, options) {
 		{
 			method: 'GET',
 			headers: {
-				Authorization: 'Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiIsImp0aSI6ImYwNjc2NmQ5YzlhYzliZTVhYzYyNThiYTJmOWRjNzcxZDQxMDRjYzlhYmE5Y2VjMzBlODgxOTQ4Mjc3MzIxZDkxNjJiZGM0N2JjYTYxZDJiIn0.eyJhdWQiOiJmMWFiMzk1Mzk4ODU3Y2Y2MjE2YSIsImp0aSI6ImYwNjc2NmQ5YzlhYzliZTVhYzYyNThiYTJmOWRjNzcxZDQxMDRjYzlhYmE5Y2VjMzBlODgxOTQ4Mjc3MzIxZDkxNjJiZGM0N2JjYTYxZDJiIiwiaWF0IjoxNTE2MDIwNTYyLCJuYmYiOjE1MTYwMjA1NjIsImV4cCI6NDY3MTY5NDE2Miwic3ViIjoiMjQiLCJzY29wZXMiOltdfQ.F78V_W9Yag4-_i_JzcEqZB9I-vimKBgjj9GBpw1IBy4'
+				Authorization: 'Bearer '
 			}
 		}, params
 	), function (err, res, body) {
@@ -507,6 +507,7 @@ function updateFlagProcessing() {
 	checkCompletedOrders();
 	checkCanceledOrders();
 	checkOnPlaceOrders();
+	checkUpdatedDriverCoords();
 	return false;
 }
 
@@ -686,6 +687,50 @@ function setOnPlaceOrderInDB(options) {
 		},
 		function (err) {
 			console.log('ERROR ONPLACE ORDER IN DB: ' + err);
+		});
+}
+
+function checkUpdatedDriverCoords() {
+	queryRequest('SELECT src_id as orderId, last_lon as lon, ' +
+		' last_lat as lat FROM OrdersCoords WHERE src = 1',
+		function (recordset) {
+			var recordsetData = recordset && recordset.recordset,
+				orderId, lat, lon;
+
+			if (!recordsetData || !recordsetData.length) {
+				return;
+			}
+
+			resetDriverCoordinatesUpdFlagsInDB();
+			recordsetData.forEach(function (element, index, array) {
+				orderId = element.orderId;
+				lat = element.lat && parseFloat(element.lat);
+				lon = element.lon && parseFloat(element.lon);
+
+				if (!orderId || !lat || !lon) {
+					return;
+				}
+
+				updateOrder({
+					orderId: orderId,
+					'car-latitude' : lat,
+					'car-longitude' : lon
+				});
+
+			});
+
+		});
+	return false;
+}
+
+function resetDriverCoordinatesUpdFlagsInDB() {
+	var updSql = 'UPDATE Voditelj SET cc_updated = 0';
+	queryRequest(updSql,
+		function (recordset) {
+			console.log('SUCCESS RESET DRIVER COORDS UPD FLAGS IN DB');
+		},
+		function (err) {
+			console.log('ERROR RESET DRIVER COORDS UPD FLAGS IN DB: ' + err);
 		});
 }
 
